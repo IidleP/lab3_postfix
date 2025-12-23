@@ -5,20 +5,22 @@
 #include <stdexcept>
 #include <cctype>
 #include "Automat.h"
+#include "queue.h"
 using namespace std;
 
-TPostfix::TPostfix(string infx) : infix(infx) {
-	priority = {
-		{'+', 1}, {'-', 1},
-		{'*', 2}, {'/', 2},
-		{'~', 3}
-	};
+TPostfix::TPostfix(string infx) : infix(infx), lexems(infx.length() * 2) {
+    priority = {
+        {'+', 1}, {'-', 1},
+        {'*', 2}, {'/', 2},
+        {'~', 3}
+    };
     if (infix.empty())
         throw invalid_argument("Empty expression");
     if (!automat.checkCorrectStr(infix))
         throw invalid_argument("Invalid expression syntax");
-	ToPostfix();
+    ToPostfix();
 }
+
 TPostfix::TPostfix() : infix(""), postfix("") {
     priority = {
         {'+', 1}, {'-', 1},
@@ -26,15 +28,22 @@ TPostfix::TPostfix() : infix(""), postfix("") {
         {'~', 3}
     };
 }
+
 void TPostfix::ToPostfix() {
     Parse();
 
-    TStack<string> stOp(lexems.size());
+    // Используем размер очереди для стека
+    TStack<string> stOp(lexems.GetMaxSize());
 
-    for (const string& l : lexems) {
+    // Создаем копию очереди для обхода
+    TQueue<string> tempQueue = lexems;
+
+    while (!tempQueue.isEmpty()) {
+        string l = tempQueue.Pop();
+
         char firstChar = l[0];
 
-        // Число - в строку
+        // Число - добавляем в постфиксную строку
         if (isdigit(firstChar) || (firstChar == '-' && l.length() > 1)) {
             postfix += l + " ";
         }
@@ -47,20 +56,16 @@ void TPostfix::ToPostfix() {
             while (!stOp.isEmpty() && stOp.Top() != "(") {
                 postfix += stOp.Pop() + " ";
             }
-            if (!stOp.isEmpty()) stOp.Pop(); // Удаляем '(' из стека
+            if (!stOp.isEmpty()) stOp.Pop();
         }
-        // Оператор и ~
+        // Оператор или унарный минус
         else if (firstChar == '+' || firstChar == '-' ||
             firstChar == '*' || firstChar == '/' ||
             firstChar == '~') {
 
-            // Оператор с вершины стека
             char stackTop = stOp.isEmpty() ? '\0' : stOp.Top()[0];
-
-            // Автомат, куда нам нужен этот оператор
             SyntaxAutomat::OperatorAction action = automat.getOperatorAction(firstChar, stackTop);
 
-            // Дейтсвие оператора
             if (action == SyntaxAutomat::ACTION_POP_THEN_PUSH) {
                 while (!stOp.isEmpty() && stOp.Top() != "(") {
                     char topOp = stOp.Top()[0];
@@ -72,13 +77,12 @@ void TPostfix::ToPostfix() {
                     }
                 }
             }
-            
-            // Если автомат пуш, то добавляем
+
             stOp.Push(l);
         }
     }
 
-    // Вытаскиваем операторы, которые остались в постфикс
+    // Вытаскиваем оставшиеся операторы
     while (!stOp.isEmpty()) {
         postfix += stOp.Pop() + " ";
     }
@@ -88,6 +92,7 @@ void TPostfix::ToPostfix() {
         postfix.pop_back();
     }
 }
+
 void TPostfix::Parse() {
     string curNumb;
     SolutionState curState = STATE_START;
@@ -112,8 +117,8 @@ void TPostfix::Parse() {
             // Однозначное?
             if (i == infix.length() - 1 ||
                 !automat.isNumberContinuing(c, infix[i + 1])) {
-                lexems.push_back(curNumb);
-                curNumb.clear(); 
+                lexems.Push(curNumb);
+                curNumb.clear();
             }
             break;
 
@@ -123,64 +128,63 @@ void TPostfix::Parse() {
             // Закончилось?
             if (i == infix.length() - 1 ||
                 !automat.isNumberContinuing(c, infix[i + 1])) {
-                lexems.push_back(curNumb);
-                curNumb.clear();   
+                lexems.Push(curNumb);
+                curNumb.clear();
             }
             break;
 
         case PARSE_END_NUMBER:
             if (!curNumb.empty()) {
-                lexems.push_back(curNumb); 
-                curNumb.clear();   
+                lexems.Push(curNumb);
+                curNumb.clear();
             }
             break;
 
         case PARSE_ADD_OPERATOR:
             // Если до этого было число, то дособерем его
             if (!curNumb.empty()) {
-                lexems.push_back(curNumb);
+                lexems.Push(curNumb);
                 curNumb.clear();
             }
-            lexems.push_back(string(1, c));
+            lexems.Push(string(1, c));
             break;
 
         case PARSE_ADD_PAREN_OPEN:
             // Если до этого было число, то дособерем его
             if (!curNumb.empty()) {
-                lexems.push_back(curNumb);
+                lexems.Push(curNumb);
                 curNumb.clear();
             }
-            lexems.push_back("(");
+            lexems.Push("(");
             break;
 
         case PARSE_ADD_PAREN_CLOSE:
             // Если до этого было число, то дособерем его
             if (!curNumb.empty()) {
-                lexems.push_back(curNumb);
+                lexems.Push(curNumb);
                 curNumb.clear();
             }
-            lexems.push_back(")");
+            lexems.Push(")");
             break;
 
         case PARSE_ADD_UNARY_MINUS:
             // Если до этого было число, то дособерем его
             if (!curNumb.empty()) {
-                lexems.push_back(curNumb);
+                lexems.Push(curNumb);
                 curNumb.clear();
             }
-            lexems.push_back("~");
+            lexems.Push("~");
             break;
 
         case PARSE_SKIP_SPACE:
             // Если до этого было число, то дособерем его
             if (!curNumb.empty()) {
-                lexems.push_back(curNumb);
+                lexems.Push(curNumb);
                 curNumb.clear();
             }
             break;
 
         case PARSE_ERROR:
-            // ⭐ Автомат сказал: "Ошибка!"
             throw invalid_argument("Parse error at pos " + to_string(i));
             break;
         }
@@ -189,12 +193,9 @@ void TPostfix::Parse() {
     }
     // Последнее число, если оно есть
     if (!curNumb.empty()) {
-        lexems.push_back(curNumb);
+        lexems.Push(curNumb);
     }
 }
-
-
-
 
 double TPostfix::Calculate() {
     TStack<double> st(postfix.length());
@@ -258,22 +259,23 @@ double TPostfix::Calculate() {
     return st.Pop();
 }
 
-
-
-
-string TPostfix::GetInfix(){
+string TPostfix::GetInfix() {
     return infix;
 }
 
-string TPostfix::GetPostfix(){
+string TPostfix::GetPostfix() {
     return postfix;
 }
 
-vector<string> TPostfix::GetOperands(){
+vector<string> TPostfix::GetOperands() {
     vector<string> op;
     map<string, bool> seen;
 
-    for (const string& lexem : lexems) {
+    // Создаем копию очереди для обхода
+    TQueue<string> tempQueue = lexems;
+
+    while (!tempQueue.isEmpty()) {
+        string lexem = tempQueue.Pop();
         if (isdigit(lexem[0]) || (lexem[0] == '-' && lexem.length() > 1)) {
             if (!seen[lexem]) {
                 op.push_back(lexem);
@@ -285,8 +287,18 @@ vector<string> TPostfix::GetOperands(){
     return op;
 }
 
-vector<string> TPostfix::GetLexems(){
-    return lexems;
+vector<string> TPostfix::GetLexems() {
+    vector<string> result;
+
+    // Создаем копию очереди для обхода
+    TQueue<string> tempQueue = lexems;
+
+    // Копируем все элементы из очереди в вектор
+    while (!tempQueue.isEmpty()) {
+        result.push_back(tempQueue.Pop());
+    }
+
+    return result;
 }
 
 bool TPostfix::Validate() {

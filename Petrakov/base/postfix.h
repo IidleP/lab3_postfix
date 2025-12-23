@@ -3,6 +3,7 @@
 
 #include "stack.h"
 #include "Automat.h"
+#include "queue.h"
 #include <string>
 #include <vector>
 #include <map>
@@ -13,7 +14,7 @@ class TPostfix
 {
   string infix;
   string postfix;
-  vector<string> lexems;
+  TQueue<string> lexems;
   map<char, int> priority;
   SyntaxAutomat automat;
 
